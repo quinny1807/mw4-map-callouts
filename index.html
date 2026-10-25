@@ -53,12 +53,35 @@
       <p id="live-status" class="live"><span class="live-dot"></span><span id="live-text">Connecting</span></p>
       <button id="viewer-admin" class="btn admin-launch" type="button">Admin</button>
     </div>
+    <div id="draw-tools" class="draw-tools" hidden>
+      <div class="draw-modes" role="group" aria-label="Drawing tools">
+        <button type="button" class="tool-btn is-on" data-tool="marker" aria-pressed="true">Marker</button>
+        <button type="button" class="tool-btn" data-tool="line" aria-pressed="false">Line</button>
+        <button type="button" class="tool-btn" data-tool="arrow" aria-pressed="false">Arrow</button>
+        <button type="button" class="tool-btn" data-tool="zone" aria-pressed="false">Zone</button>
+      </div>
+      <div class="draw-colors" role="group" aria-label="Colour">
+        <button type="button" class="color-btn is-on" data-color="#ff3b30" aria-label="Red" aria-pressed="true"><span style="background:#ff3b30"></span></button>
+        <button type="button" class="color-btn" data-color="#e2b340" aria-label="Amber" aria-pressed="false"><span style="background:#e2b340"></span></button>
+        <button type="button" class="color-btn" data-color="#3d8bfd" aria-label="Blue" aria-pressed="false"><span style="background:#3d8bfd"></span></button>
+        <button type="button" class="color-btn" data-color="#9dcc6a" aria-label="Green" aria-pressed="false"><span style="background:#9dcc6a"></span></button>
+        <button type="button" class="color-btn" data-color="#f4f1e8" aria-label="White" aria-pressed="false"><span style="background:#f4f1e8"></span></button>
+      </div>
+      <label id="draw-label-field" class="draw-label-field" hidden>Zone label
+        <input id="draw-label" maxlength="40" autocomplete="off" enterkeyhint="done" />
+      </label>
+      <button id="draw-finish" class="btn btn-primary" type="button" hidden>Finish</button>
+      <button id="draw-delete" class="btn" type="button" hidden>Delete</button>
+      <button id="draw-undo" class="btn" type="button" disabled>Undo</button>
+      <p id="draw-preview" class="draw-preview" hidden>Preview only. Nothing is saved.</p>
+    </div>
     <div class="viewer-stage">
       <div id="viewport" class="viewport">
         <p id="map-loading" class="loading">Loading map…</p>
         <div id="world" class="world">
-          <img id="map-image" alt="" draggable="false" />
-          <div id="pins" class="pins"></div>
+        <img id="map-image" alt="" draggable="false" />
+        <svg id="drawings" class="drawings" aria-hidden="true"></svg>
+        <div id="pins" class="pins"></div>
         </div>
       </div>
       <aside id="legend" class="legend" aria-labelledby="legend-title">

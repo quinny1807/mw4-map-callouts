@@ -59,6 +59,10 @@ The enlarged map has a numbered legend. On a wide screen it sits beside the map.
 
 Admin is a small button in the header and on the map bar. It asks for an email and sends a Supabase magic link (`signInWithOtp`) back to this site's origin and path. The session stays in the browser. A different email can sign in but cannot edit. Sign out is on that same button once a session exists.
 
+In admin mode, drag a pin to move it. The toolbar can also draw a line, an arrow, or a zone in `public.map_drawings` (image fractions, same as pins). Zones show in the legend. Everyone can see drawings. They update live. Undo reverts the last move, drawing, or delete.
+
+On `localhost` or `127.0.0.1` only, `?preview-admin=1` shows that toolbar so the controls can be screenshotted. It does not sign anyone in and it does not write.
+
 `public.callout_votes` is unused. The page does not read or write it.
 
 `vendor/supabase.js` is `@supabase/supabase-js` 2.118.0, using the implicit auth flow so the default magic-link email template works. Fonts are Barlow, under the SIL Open Font License (`fonts/OFL.txt`).
