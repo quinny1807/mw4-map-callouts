@@ -15,9 +15,9 @@
       <div>
         <p class="eyebrow">Modern Warfare 4 · 2026</p>
         <h1>Callouts</h1>
-        <p class="lede">Tap a map, name a spot, and the pin shows up for the whole group.</p>
+        <p class="lede">Open a map and read the shared pins. The list beside the map names every spot.</p>
       </div>
-      <button id="open-gamertag" class="tag-btn" type="button">Set gamertag</button>
+      <button id="admin-open" class="btn admin-launch" type="button">Admin</button>
     </header>
 
     <div class="toolbar">
@@ -51,22 +51,50 @@
         <p id="viewer-sub" class="viewer-sub"></p>
       </div>
       <p id="live-status" class="live"><span class="live-dot"></span><span id="live-text">Connecting</span></p>
-      <button id="viewer-gamertag" class="tag-btn" type="button">Gamertag</button>
+      <button id="viewer-admin" class="btn admin-launch" type="button">Admin</button>
     </div>
-    <div id="viewport" class="viewport">
-      <p id="map-loading" class="loading">Loading map…</p>
-      <div id="world" class="world">
-        <img id="map-image" alt="" draggable="false" />
-        <div id="pins" class="pins"></div>
+    <div id="draw-tools" class="draw-tools" hidden>
+      <div class="draw-modes" role="group" aria-label="Drawing tools">
+        <button type="button" class="tool-btn is-on" data-tool="marker" aria-pressed="true">Marker</button>
+        <button type="button" class="tool-btn" data-tool="line" aria-pressed="false">Line</button>
+        <button type="button" class="tool-btn" data-tool="arrow" aria-pressed="false">Arrow</button>
+        <button type="button" class="tool-btn" data-tool="zone" aria-pressed="false">Zone</button>
       </div>
-      <aside id="calls-panel" class="calls-panel" hidden>
-        <h3 class="visually-hidden">Callouts on this map</h3>
-        <div id="calls-list"></div>
+      <div class="draw-colors" role="group" aria-label="Colour">
+        <button type="button" class="color-btn is-on" data-color="#ff3b30" aria-label="Red" aria-pressed="true"><span style="background:#ff3b30"></span></button>
+        <button type="button" class="color-btn" data-color="#e2b340" aria-label="Amber" aria-pressed="false"><span style="background:#e2b340"></span></button>
+        <button type="button" class="color-btn" data-color="#3d8bfd" aria-label="Blue" aria-pressed="false"><span style="background:#3d8bfd"></span></button>
+        <button type="button" class="color-btn" data-color="#9dcc6a" aria-label="Green" aria-pressed="false"><span style="background:#9dcc6a"></span></button>
+        <button type="button" class="color-btn" data-color="#f4f1e8" aria-label="White" aria-pressed="false"><span style="background:#f4f1e8"></span></button>
+      </div>
+      <label id="draw-label-field" class="draw-label-field" hidden>Zone label
+        <input id="draw-label" maxlength="40" autocomplete="off" enterkeyhint="done" />
+      </label>
+      <button id="draw-finish" class="btn btn-primary" type="button" hidden>Finish</button>
+      <button id="draw-delete" class="btn" type="button" hidden>Delete</button>
+      <button id="draw-undo" class="btn" type="button" disabled>Undo</button>
+      <p id="draw-preview" class="draw-preview" hidden>Preview only. Nothing is saved.</p>
+    </div>
+    <div class="viewer-stage">
+      <div id="viewport" class="viewport">
+        <p id="map-loading" class="loading">Loading map…</p>
+        <div id="world" class="world">
+        <img id="map-image" alt="" draggable="false" />
+        <svg id="drawings" class="drawings" aria-hidden="true"></svg>
+        <div id="pins" class="pins"></div>
+        </div>
+      </div>
+      <aside id="legend" class="legend" aria-labelledby="legend-title">
+        <div class="legend-head">
+          <h3 id="legend-title">Callouts</h3>
+          <button id="legend-close" class="icon-btn legend-close" type="button" aria-label="Close callout list">×</button>
+        </div>
+        <div id="legend-list" class="legend-list"></div>
       </aside>
     </div>
     <div class="viewer-tools">
-      <p class="hint">Click a spot to name it. Tap ▲ to upvote. Scroll or pinch to zoom. Drag to pan.</p>
-      <button id="toggle-calls" class="btn" type="button" aria-expanded="false" aria-controls="calls-panel">Calls</button>
+      <p id="hint" class="hint">Scroll or pinch to zoom. Drag to pan.</p>
+      <button id="legend-toggle" class="btn legend-toggle" type="button" aria-expanded="false" aria-controls="legend">Legend</button>
       <div class="zoom-group">
         <button id="zoom-out" class="icon-btn" type="button" aria-label="Zoom out">−</button>
         <button id="zoom-fit" class="icon-btn" type="button" aria-label="Fit map">⌂</button>
@@ -76,28 +104,31 @@
   </section>
 
   <form id="callout-form" class="draft" hidden>
+    <p id="draft-title" class="draft-title">Name this spot</p>
     <label for="callout-input">Callout name
       <input id="callout-input" name="name" maxlength="40" required autocomplete="off" enterkeyhint="done" />
     </label>
-    <p class="draft-by">by <span id="draft-tag"></span></p>
     <div class="draft-actions">
       <button id="draft-cancel" class="btn" type="button">Cancel</button>
+      <button id="draft-delete" class="btn" type="button" hidden>Delete</button>
       <button id="draft-save" class="btn btn-primary" type="submit">Drop pin</button>
     </div>
     <p id="draft-error" class="error" role="alert"></p>
   </form>
 
-  <dialog id="tag-dialog">
-    <form id="tag-form" class="modal">
-      <h2>Your gamertag</h2>
-      <p>Asked once on this browser. New pins use it. Older pins keep the name they were saved with.</p>
-      <label for="tag-input">Gamertag
-        <input id="tag-input" maxlength="32" required autocomplete="nickname" enterkeyhint="done" />
+  <dialog id="admin-dialog">
+    <form id="admin-form" class="modal">
+      <h2 id="admin-title">Admin</h2>
+      <p id="admin-copy">Email yourself a sign-in link. Everyone else can look around without an account.</p>
+      <label id="admin-email-field" for="admin-email">Email
+        <input id="admin-email" type="email" maxlength="320" autocomplete="email" inputmode="email" enterkeyhint="send" required />
       </label>
-      <p id="tag-error" class="error" role="alert"></p>
+      <p id="admin-message" class="admin-message" hidden></p>
+      <p id="admin-error" class="error" role="alert"></p>
       <div class="modal-actions">
-        <button id="tag-cancel" class="btn" type="button" hidden>Cancel</button>
-        <button class="btn btn-primary" type="submit">Save gamertag</button>
+        <button id="admin-close" class="btn" type="button">Close</button>
+        <button id="admin-send" class="btn btn-primary" type="submit">Send link</button>
+        <button id="admin-signout" class="btn" type="button" hidden>Sign out</button>
       </div>
     </form>
   </dialog>
