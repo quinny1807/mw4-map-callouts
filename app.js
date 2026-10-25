@@ -1,8 +1,9 @@
 import { createClient } from "./vendor/supabase.js";
 import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from "./config.js";
-import { choosePlacements } from "./labels.js";
+import { choosePlacements, compareByVotes, emphasisFor } from "./labels.js";
 
 const TAG_KEY = "mw4-callouts-gamertag";
+const VOTER_KEY = "mw4-callouts-voter-id";
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: {
@@ -20,6 +21,8 @@ const state = {
   bySlug: new Map(),
   callouts: [],
   seen: new Set(),
+  votes: [],
+  voteKeys: new Set(),
   filter: "all",
   query: "",
   map: null,
@@ -82,6 +85,76 @@ function saveTag(tag) {
   } catch {
     // Private mode still keeps the name for this tab.
   }
+}
+
+function voterId() {
+  try {
+    const existing = localStorage.getItem(VOTER_KEY) || "";
+    if (existing.length >= 8 && existing.length <= 64) return existing;
+    const created = crypto.randomUUID();
+    localStorage.setItem(VOTER_KEY, created);
+    return created;
+  } catch {
+    if (!state.memoryVoter) state.memoryVoter = crypto.randomUUID();
+    return state.memoryVoter;
+  }
+}
+
+function voteKey(row) {
+  return `${row.callout_id}:${row.voter_id}`;
+}
+
+function normalizeVote(row) {
+  if (!row?.id || !row.callout_id || !row.voter_id) return null;
+  const voter = String(row.voter_id);
+  if (voter.length < 8 || voter.length > 64) return null;
+  const gamertag = row.gamertag == null ? null : cleanText(row.gamertag, 32);
+  return {
+    id: String(row.id),
+    callout_id: String(row.callout_id),
+    voter_id: voter,
+    gamertag,
+    created_at: String(row.created_at || ""),
+  };
+}
+
+function rememberVote(row) {
+  if (!row) return false;
+  const key = voteKey(row);
+  if (state.voteKeys.has(key) || state.voteKeys.has(row.id)) {
+    const existing = state.votes.find((vote) => voteKey(vote) === key);
+    if (existing && String(existing.id).startsWith("tmp-") && !String(row.id).startsWith("tmp-")) {
+      state.voteKeys.delete(existing.id);
+      existing.id = row.id;
+      existing.created_at = row.created_at || existing.created_at;
+      existing.gamertag = row.gamertag;
+      state.voteKeys.add(row.id);
+    }
+    return false;
+  }
+  state.voteKeys.add(key);
+  state.voteKeys.add(row.id);
+  state.votes.push(row);
+  return true;
+}
+
+function voteCount(calloutId) {
+  let count = 0;
+  for (const vote of state.votes) {
+    if (vote.callout_id === calloutId) count += 1;
+  }
+  return count;
+}
+
+function hasVoted(calloutId) {
+  const mine = voterId();
+  return state.votes.some((vote) => vote.callout_id === calloutId && vote.voter_id === mine);
+}
+
+function isDuplicate(error) {
+  const code = String(error?.code || "");
+  const message = `${error?.message || ""} ${error?.details || ""}`;
+  return code === "23505" || /duplicate key|already exists|unique constraint/i.test(message);
 }
 
 function tagLabel() {
@@ -269,7 +342,7 @@ function renderCallList() {
   const list = $("calls-list");
   list.replaceChildren();
   if (!state.map) return;
-  const rows = [...callsFor(state.map.slug)].sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+  const rows = [...callsFor(state.map.slug)].sort((a, b) => compareByVotes(a, b, (pin) => voteCount(pin.id)));
   if (!rows.length) {
     const empty = document.createElement("p");
     empty.className = "empty";
@@ -278,19 +351,45 @@ function renderCallList() {
     return;
   }
   for (const row of rows) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "call-row";
-    button.dataset.id = row.id;
-    if (row.id === state.selectedId) button.setAttribute("aria-current", "true");
+    const item = document.createElement("div");
+    item.className = "call-row";
+    if (row.id === state.selectedId) item.setAttribute("aria-current", "true");
+    const jump = document.createElement("button");
+    jump.type = "button";
+    jump.className = "call-jump";
     const strong = document.createElement("strong");
     strong.textContent = row.name;
     const by = document.createElement("span");
     by.textContent = `by ${row.gamertag}`;
-    button.append(strong, by);
-    button.addEventListener("click", () => selectPin(row.id));
-    list.appendChild(button);
+    jump.append(strong, by);
+    jump.addEventListener("click", () => selectPin(row.id));
+    item.append(jump, voteButton(row));
+    list.appendChild(item);
   }
+}
+
+function voteButton(row) {
+  const count = voteCount(row.id);
+  const voted = hasVoted(row.id);
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = `vote${voted ? " is-voted" : ""}`;
+  button.dataset.id = row.id;
+  button.setAttribute("aria-pressed", String(voted));
+  const noun = count === 1 ? "vote" : "votes";
+  button.setAttribute(
+    "aria-label",
+    voted ? `Upvoted ${row.name}, ${count} ${noun}` : `Upvote ${row.name}, ${count} ${noun}`
+  );
+  const mark = document.createElement("span");
+  mark.className = "vote-mark";
+  mark.setAttribute("aria-hidden", "true");
+  mark.textContent = "▲";
+  const num = document.createElement("span");
+  num.className = "vote-count";
+  num.textContent = String(count);
+  button.append(mark, num);
+  return button;
 }
 
 function renderMarkers(freshId) {
@@ -298,17 +397,22 @@ function renderMarkers(freshId) {
   if (!state.map) return;
   const rows = callsFor(state.map.slug);
   const places = choosePlacements(rows);
+  const emphasis = emphasisFor(rows, (pin) => voteCount(pin.id));
   for (const row of rows) {
-    const marker = document.createElement("button");
-    marker.type = "button";
+    const marker = document.createElement("div");
     marker.className = "marker";
     if (row.id === freshId) marker.classList.add("is-new");
     if (row.id === state.selectedId) marker.classList.add("is-active");
+    if (emphasis.lead.has(row.id)) marker.classList.add("is-lead");
+    if (emphasis.quiet.has(row.id)) marker.classList.add("is-quiet");
     marker.dataset.id = row.id;
     marker.dataset.place = places.get(row.id) || "top";
     marker.style.left = `${row.x * 100}%`;
     marker.style.top = `${row.y * 100}%`;
-    marker.setAttribute("aria-label", `${row.name}, by ${row.gamertag}`);
+    const votes = Math.min(voteCount(row.id), 40);
+    const lead = emphasis.lead.has(row.id) ? 20 : 0;
+    const active = row.id === state.selectedId ? 30 : 0;
+    marker.style.zIndex = String(2 + votes + lead + active);
 
     const ui = document.createElement("span");
     ui.className = "marker-ui";
@@ -322,7 +426,7 @@ function renderMarkers(freshId) {
     const by = document.createElement("span");
     by.className = "tag-by";
     by.textContent = `by ${row.gamertag}`;
-    tag.append(name, by);
+    tag.append(name, by, voteButton(row));
     ui.append(dot, tag);
     marker.appendChild(ui);
     pinsEl.appendChild(marker);
@@ -572,6 +676,59 @@ async function saveDraft(event) {
   if (row) announce(`${row.name}, by ${row.gamertag}`);
 }
 
+function refreshVotes(calloutId) {
+  renderCounts();
+  if (!state.map) return;
+  const onMap = state.callouts.some((row) => row.id === calloutId && row.map_slug === state.map.slug);
+  if (onMap || !calloutId) renderMarkers();
+}
+
+async function castVote(calloutId) {
+  const callout = state.callouts.find((row) => row.id === calloutId);
+  if (!callout) return;
+  if (hasVoted(calloutId)) {
+    announce(`You already upvoted ${callout.name}.`);
+    return;
+  }
+  const voter = voterId();
+  const gamertag = loadTag();
+  const optimistic = {
+    id: `tmp-${calloutId}`,
+    callout_id: calloutId,
+    voter_id: voter,
+    gamertag,
+    created_at: new Date().toISOString(),
+  };
+  rememberVote(optimistic);
+  refreshVotes(calloutId);
+  const { data, error } = await supabase
+    .from("callout_votes")
+    .insert({
+      callout_id: calloutId,
+      voter_id: voter,
+      gamertag,
+    })
+    .select("id,callout_id,voter_id,gamertag,created_at")
+    .single();
+  if (error) {
+    if (isDuplicate(error)) {
+      announce(`You already upvoted ${callout.name}.`);
+      refreshVotes(calloutId);
+      return;
+    }
+    state.votes = state.votes.filter((vote) => vote.id !== optimistic.id);
+    state.voteKeys.delete(voteKey(optimistic));
+    state.voteKeys.delete(optimistic.id);
+    refreshVotes(calloutId);
+    announce("Couldn't save that vote.");
+    console.error(error);
+    return;
+  }
+  rememberVote(normalizeVote(data));
+  refreshVotes(calloutId);
+  announce(`Upvoted ${callout.name}.`);
+}
+
 function subscribe() {
   const token = ++channelToken;
   if (channel) supabase.removeChannel(channel);
@@ -587,6 +744,23 @@ function subscribe() {
         renderCounts();
         if (state.map && state.map.slug === row.map_slug) renderMarkers(row.id);
         if (state.booted) announce(`${row.name}, by ${row.gamertag}`);
+      }
+    )
+    .on(
+      "postgres_changes",
+      { event: "INSERT", schema: "public", table: "callout_votes" },
+      (payload) => {
+        if (token !== channelToken) return;
+        const row = normalizeVote(payload.new);
+        if (!row || !rememberVote(row)) return;
+        refreshVotes(row.callout_id);
+        if (state.booted && row.voter_id !== voterId()) {
+          const callout = state.callouts.find((item) => item.id === row.callout_id);
+          if (callout) {
+            const n = voteCount(callout.id);
+            announce(`${callout.name} now has ${n} ${n === 1 ? "vote" : "votes"}.`);
+          }
+        }
       }
     )
     .subscribe((status) => {
@@ -606,19 +780,26 @@ function subscribe() {
 }
 
 async function loadCallouts() {
-  const { data, error } = await supabase
-    .from("callouts")
-    .select("id,map_slug,x,y,name,gamertag,created_at")
-    .order("created_at", { ascending: true });
-  if (error) throw error;
-  for (const row of data || []) remember(normalize(row));
+  const [calls, votes] = await Promise.all([
+    supabase
+      .from("callouts")
+      .select("id,map_slug,x,y,name,gamertag,created_at")
+      .order("created_at", { ascending: true }),
+    supabase
+      .from("callout_votes")
+      .select("id,callout_id,voter_id,gamertag,created_at"),
+  ]);
+  if (calls.error) throw calls.error;
+  if (votes.error) throw votes.error;
+  for (const row of calls.data || []) remember(normalize(row));
+  for (const row of votes.data || []) rememberVote(normalizeVote(row));
   state.booted = true;
   renderCounts();
   if (state.map) renderMarkers();
 }
 
 function onPointerDown(event) {
-  if (event.target.closest(".calls-panel")) return;
+  if (event.target.closest(".calls-panel, .vote")) return;
   if (event.button !== undefined && event.button !== 0) return;
   viewport.setPointerCapture?.(event.pointerId);
   pointers.set(event.pointerId, {
@@ -744,7 +925,7 @@ viewport.addEventListener("pointermove", onPointerMove);
 viewport.addEventListener("pointerup", onPointerUp);
 viewport.addEventListener("pointercancel", onPointerUp);
 viewport.addEventListener("touchmove", (event) => {
-  if (event.target.closest(".calls-panel")) return;
+  if (event.target.closest(".calls-panel, .vote")) return;
   event.preventDefault();
 }, { passive: false });
 viewport.addEventListener("contextmenu", (event) => event.preventDefault());
@@ -764,15 +945,28 @@ viewport.addEventListener("click", (event) => {
     suppressToken += 1;
     return;
   }
-  if (event.target.closest(".marker, .calls-panel")) return;
+  if (event.target.closest(".marker, .calls-panel, .vote")) return;
   openDraft(event.clientX, event.clientY);
 });
 
 pinsEl.addEventListener("click", (event) => {
+  const vote = event.target.closest(".vote");
+  if (vote) {
+    event.stopPropagation();
+    castVote(vote.dataset.id);
+    return;
+  }
   const marker = event.target.closest(".marker[data-id]");
   if (!marker) return;
   event.stopPropagation();
   selectPin(marker.dataset.id);
+});
+
+$("calls-list").addEventListener("click", (event) => {
+  const vote = event.target.closest(".vote");
+  if (!vote) return;
+  event.stopPropagation();
+  castVote(vote.dataset.id);
 });
 
 $("zoom-in").addEventListener("click", () => {
