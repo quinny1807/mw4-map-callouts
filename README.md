@@ -55,6 +55,8 @@ Official interactive tac maps exist for the 12 launch Core maps only. Shipment, 
 
 Pins are rows in Supabase `public.callouts`. Position is a fraction of the image (`x` and `y` from 0 to 1), so it stays put at any zoom. The browser uses the public publishable key in `config.js`. Anonymous clients can read and insert only. Realtime is subscribed for inserts.
 
+Upvotes live in `public.callout_votes`. Each browser keeps a random `voter_id` in `localStorage` (`mw4-callouts-voter-id`) and can upvote a callout once. The count is on the pin and in the calls list, which is sorted by votes. When pins sit close together, the one with more votes gets the larger, brighter label. Counts update live. Votes cannot be removed from the browser.
+
 `vendor/supabase.js` is `@supabase/supabase-js` 2.118.0. Fonts are Barlow, under the SIL Open Font License (`fonts/OFL.txt`).
 
-A test pin was left on Cachette while checking the live database: **Test Callout** by **Site Test** (near the middle of the map). Anonymous clients cannot delete rows, so it will stay until someone removes it in the Supabase dashboard.
+A test pin was left on Cachette while checking the live database: **Test Callout** by **Site Test** (near the middle of the map). One upvote from that check is on the pin. Anonymous clients cannot delete rows, so both stay until someone removes them in the Supabase dashboard.
